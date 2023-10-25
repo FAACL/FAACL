@@ -8,21 +8,8 @@ import re
 from skimage.util import random_noise
 from skimage.transform import rotate
 
-def read_json(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False,
-        var = 0, salt = 0):
-    '''parses data in given train and test data directories
-
-    assumes:
-    - the data in the input directories are .json files with 
-        keys 'users' and 'user_data'
-    - the set of train set users is the same as the set of test set users
-    
-    Return:
-        clients: list of client ids
-        train_data: dictionary of train (numpy) data
-        test_data: dictionary of test (numpy) data
-    '''
-    
+def read_json(train_data_dir, test_data_dir, group = 1, central = False,
+        var = 0, salt = 0):    
     clients = []
     train_npdata = {}
     test_npdata = {}
@@ -655,20 +642,20 @@ def read_json(train_data_dir, test_data_dir, group = 1, swap_label = 0, central 
 
 
 
-def read_mnist(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
-    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central,var = 0.4, salt = 0.7)
+def read_mnist(train_data_dir, test_data_dir, group = 1, central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, central = central,var = 0.4, salt = 0.7)
 
 
-def read_femnist(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
-    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central,var = 1, salt = 0.6)
+def read_femnist(train_data_dir, test_data_dir, group = 1, central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, central = central,var = 1, salt = 0.6)
 
-def read_femnist62(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
-    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central)
+def read_femnist62(train_data_dir, test_data_dir, group = 1,central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, central = central)
 
-def read_fmnist(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
-    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central,var = 0.9, salt = 0.7)
+def read_fmnist(train_data_dir, test_data_dir, group = 1,  central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, central = central,var = 0.9, salt = 0.7)
 
-def read_federated_data(dsname, group = 1, swap_label = 0, central = False):
+def read_federated_data(dsname, group = 1,  central = False):
     clients = []
     train_data = {}
     test_data = {}
@@ -678,13 +665,13 @@ def read_federated_data(dsname, group = 1, swap_label = 0, central = False):
     test_data_dir = Path.joinpath(wspath, 'data', dsname, 'data', 'test').absolute()
 
     if dsname.startswith('mnist'):
-        clients, train_data, test_data = read_mnist(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
+        clients, train_data, test_data = read_mnist(train_data_dir, test_data_dir, group =group,  central = central)
     if dsname == 'emnist':
-        clients, train_data, test_data = read_femnist(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
+        clients, train_data, test_data = read_femnist(train_data_dir, test_data_dir, group =group, central = central)
     if dsname == 'femnist62':
-        clients, train_data, test_data = read_femnist62(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
+        clients, train_data, test_data = read_femnist62(train_data_dir, test_data_dir, group =group, central = central)
     if dsname == 'fmnist':
-        clients, train_data, test_data = read_fmnist(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
+        clients, train_data, test_data = read_fmnist(train_data_dir, test_data_dir, group =group, central = central)
   
     # Convert list to numpy array
     for c in train_data.keys():

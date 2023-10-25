@@ -18,7 +18,7 @@ Requried packages is in requirements.txt, to install them, run
     pip install -r requirements.txt
  
  
-Please download the flearn.trainer folder from FlexCFL repository and put them in flearn directory.
+Please download the flearn.trainer folder from [FlexCFL](https://github.com/morningD/FlexCFL) repository and put them in flearn directory.
 
 The flearn folder should look like the following: 
 

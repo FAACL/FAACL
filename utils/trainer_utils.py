@@ -20,7 +20,8 @@ class TrainConfig(object):
             'eval_locally': False,
             'dynamic': False, 
             'swap_p': 0, 
-            'shift_type': None 
+            'shift_type': None,
+            'group': group
         }
 
         self.client_config = {

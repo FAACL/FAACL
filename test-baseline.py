@@ -9,7 +9,7 @@ from flearn.trainer.fedgroup import FedGroup
 from flearn.trainer.ifca import IFCA
 
 def main(dataset, model, trainer, glr, dynamic, swap_p, shift_type, RAC, RCC, group = 1, cluster = 2, seed = 2077):
-    config = TrainConfig(dataset, model, trainer, group =group, swap_label = swap_label, seed = seed)
+    config = TrainConfig(dataset, model, trainer, group =group, seed = seed)
     config.trainer_config['group_agg_lr'] = glr
     config.trainer_config['RAC'] = RAC
     config.trainer_config['RCC'] = RCC

@@ -35,8 +35,7 @@ class Centralize(object):
         self.results_path = train_config.results_path
         self.trainer_type = train_config.trainer_type
         self.group = train_config.group
-        
-        self.swap_label = train_config.swap_label
+    
         self.rounds = train_config.trainer_config['num_rounds']
         
         self.client_config = train_config.client_config
@@ -55,7 +54,7 @@ class Centralize(object):
         
     
     def construct_model(self):
-        clients, train_data, test_data = read_federated_data(self.dataset, group = self.group, swap_label = self.swap_label, central = True)
+        clients, train_data, test_data = read_federated_data(self.dataset, group = self.group, central = True)
         model_path = 'flearn.model.%s.%s' % (self.dataset.split('_')[0], self.model)
         self.model_loader = importlib.import_module(model_path).construct_model
         client_model = self.model_loader(self.trainer_type, self.client_config['learning_rate'])
@@ -94,8 +93,8 @@ class Centralize(object):
 # In[2]:
 
 
-def test(dataset, model = 'mlp', swap_label = False, group = 1, seed = 2077):
-    config = TrainConfig(dataset, model, 'Centralize', group = group, swap_label = swap_label, seed = seed)
+def test(dataset, model = 'mlp', group = 1, seed = 2077):
+    config = TrainConfig(dataset, model, 'Centralize', group = group, seed = seed)
     config.results_path = 'results/'+ dataset+ "/Centralize/"
     #config.trainer_config['num_rounds'] = 100
     if group == 1:
@@ -111,11 +110,10 @@ def test(dataset, model = 'mlp', swap_label = False, group = 1, seed = 2077):
 
 dataset = 'femnist'
 model = 'mlp'
-swap_label = 0 
 
 group = 8
 seed = 55
-test(dataset = dataset,model = model, swap_label = swap_label, group = group, seed = seed)
+test(dataset = dataset,model = model, group = group, seed = seed)
 
 
 

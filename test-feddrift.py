@@ -35,7 +35,6 @@ class FedDrift(object):
         self.group = train_config.group
         self.delta = delta
         self.results_path = train_config.results_path
-        self.swap_label = train_config.swap_label
         # Get the config of client
         self.client_config = train_config.client_config
         # Get the config of group
@@ -96,7 +95,7 @@ class FedDrift(object):
 
     def construct_actors(self):
         # 1, Read dataset
-        clients, train_data, test_data = read_federated_data(self.dataset, group = self.group, swap_label = self.swap_label)
+        clients, train_data, test_data = read_federated_data(self.dataset, group = self.group)
 
         # 2, Get model loader according to dataset and model name and construct the model
         # Set the model loader according to the dataset and model name
@@ -468,8 +467,8 @@ class FedDrift(object):
 
 # In[1]:
 
-def test(dataset, local_training, model = 'mlp', swap_label = False, group = 1, seed = 2077,epsilon_wx = 0.3, delta = 2):
-    config = TrainConfig(dataset, model, 'FedDrift', group = group, swap_label = swap_label, seed = seed)
+def test(dataset, local_training, model = 'mlp', group = 1, seed = 2077,epsilon_wx = 0.3, delta = 2):
+    config = TrainConfig(dataset, model, 'FedDrift', group = group, seed = seed)
     config.results_path = 'results/'+ dataset+ "/FedDrift/"
 
     if group == 1:

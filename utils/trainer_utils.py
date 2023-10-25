@@ -5,11 +5,10 @@ import numpy as np
     The type of trainer contain:  ['fedgroup', 'fesem', 'ifca', 'FAACL', 'FedDrift', 'Centralize']
 '''
 class TrainConfig(object):
-    def __init__(self, dataset, model, trainer, group = 1, swap_label = 0, seed = 2077):
+    def __init__(self, dataset, model, trainer, group = 1, seed = 2077):
         self.trainer_type = trainer
         self.results_path = f'results/{dataset}/'
         self.group = group
-        self.swap_label = swap_label
         self.trainer_config = {
             'dataset': dataset,
             'model': model,

@@ -26,7 +26,7 @@ def fun(ele):
 def sig(x):
     return 1/(1 + np.exp(-x))
 # adative federated cluster learning
-class AdaFCL(object):
+class FAACL(object):
     def __init__(self, train_config, local_training,epsilon_wx):
         self.epsilon_wx = epsilon_wx
         for key, val in train_config.trainer_config.items():
@@ -34,7 +34,6 @@ class AdaFCL(object):
         self.local_training = local_training
         self.trainer_type = train_config.trainer_type
         self.group = train_config.group
-        self.swap_label = train_config.swap_label
         # Get the config of client
         self.client_config = train_config.client_config
         self.results_path = train_config.results_path
@@ -97,7 +96,7 @@ class AdaFCL(object):
 
     def construct_actors(self):
         # 1, Read dataset
-        clients, train_data, test_data = read_federated_data(self.dataset, group = self.group, swap_label = self.swap_label)
+        clients, train_data, test_data = read_federated_data(self.dataset, group = self.group)
 
         # 2, Get model loader according to dataset and model name and construct the model
         # Set the model loader according to the dataset and model name
@@ -530,9 +529,9 @@ class AdaFCL(object):
         return diffs
 
 def test(dataset, local_training, \
-         model = 'mlp', swap_label = False, group = 1, seed = 2077,epsilon_wx = 0.3):
-    config = TrainConfig(dataset, model, 'AdaFCL', group = group, swap_label = swap_label, seed = seed)
-    config.results_path = 'results/'+ dataset+ "/AdaFCL_new/"
+         model = 'mlp', group = 1, seed = 2077,epsilon_wx = 0.3):
+    config = TrainConfig(dataset, model, 'AdaFCL', group = group, seed = seed)
+    config.results_path = 'results/'+ dataset+ "/FAACL/"
 
     if group == 1:
         config.results_path += "iid/"
@@ -540,11 +539,10 @@ def test(dataset, local_training, \
         config.results_path += "group_" + str(group) + "/"
     
     config.results_path += "local_training" + str(local_training) + "/"
-    if seed != 2077:
-        config.results_path += "seed" + str(seed) + "/"
+    config.results_path += "seed" + str(seed) + "/"
     
     
-    trainer = AdaFCL(config,local_training, epsilon_wx = epsilon_wx)
+    trainer = FAACL(config,local_training, epsilon_wx = epsilon_wx)
     trainer.train()
 
 

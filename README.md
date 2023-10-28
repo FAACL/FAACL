@@ -30,7 +30,9 @@ The flearn folder should look like the following:
                                        
                     
 
-Please download the mnist, emnist and fmnist from [FedProx](https://github.com/litian96/FedProx/tree/master) repository, fmnist from [ditto](https://github.com/litian96/ditto/tree/master) repository, femnist from [LEAF](https://github.com/TalwalkarLab/leaf) repository
+Please download the mnist, emnist and fmnist from [FedProx](https://github.com/litian96/FedProx/tree/master) repository, fmnist from [ditto](https://github.com/litian96/ditto/tree/master) repository, femnist from [LEAF](https://github.com/TalwalkarLab/leaf) repository with the command
+
+    ./preprocess.sh -s niid --sf 0.05 -k 0 -t sample --smplseed 2077
 
 The data folder should look like the following:
 

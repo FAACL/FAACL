@@ -21,19 +21,171 @@ import tensorflow as tf
 from tensorflow import keras
 import scipy.stats as stats
 import time
-def fun(ele):
+
+cluster_id = 0
+def getid(ele):
     return ele.id
-def sig(x):
-    return 1/(1 + np.exp(-x))
-# adative federated cluster learning
+
+def get_member(ele):
+    return ele.member
+
+class Partition:
+    def __init__(self, member, clustering, epsilon):
+        self.member = member
+        self.clustering = clustering
+        self.epsilon = epsilon
+    def print_partition(self):
+        print("Partition Members: ", list(map(getid, list(self.member))))
+        print("Clustering: ")
+        for cluster in self.clustering:
+            cluster.print_cluster()
+    def train(self):
+        for cluster in self.clustering:
+            cluster.train()
+    def test(self):
+        acc = []
+        weights = []
+        test_results = dict()
+        for cluster in self.clustering:
+            test_acc, test_weight, weighted_acc= cluster.test()
+            acc.extend(test_acc)
+            weights.extend(test_weight)
+            test_results.update({cluster: weighted_acc})
+        return acc, weights, test_results
+
+    def append(self, partition):
+        self.member.update(partition.member)
+        self.clustering.update(partition.clustering)
+
+    def merge(self):
+        if len(self.clustering) == 1:
+            return
+        for cluster1 in self.clustering:
+            for cluster2 in self.clustering:
+                if cluster1 == cluster2:
+                    continue
+                if cluster1.need(cluster2, epsilon = self.epsilon):
+                    cluster1.add_supportive(cluster2)
+        cluster_to_add = set()
+        cluster_to_remove = set()
+        for cluster1 in self.clustering:
+            if cluster1 in cluster_to_remove:
+                continue
+            for cluster2 in self.clustering:
+                if cluster1 == cluster2:
+                    continue
+                if cluster2 in cluster_to_remove:
+                    continue
+                if cluster1 in cluster2.supportive_clusters and cluster2 in cluster1.supportive_clusters:
+                    new_cluster = Cluster(member=cluster1.member.union(cluster2.member), model=cluster1.model)
+                    cluster_to_remove.add(cluster1)
+                    cluster_to_remove.add(cluster2)
+                    cluster_to_add.add(new_cluster)
+        self.clustering.update(cluster_to_add)
+        self.clustering.symmetric_difference_update(cluster_to_remove)
+        for cluster in self.clustering:
+            cluster.supportive_clusters = cluster.supportive_clusters.intersection(self.clustering)
+                
+
+class Cluster:
+    def __init__(self, member, model):
+        global cluster_id
+        self.id = cluster_id
+        cluster_id += 1
+        self.member = member
+        self.model = model
+        self.supportive_clusters = set()
+    def print_cluster(self):
+        print("Cluster Members: ")
+        self.print_member()
+        print("Supportive Clusters: ")
+        self.print_tmember()
+    
+    def get_member(self):
+        return np.sort(list(map(getid, list(self.member))))
+
+    def get_sc(self):
+        return np.sort(list(map(getid, list(self.supportive_clusters))))
+    
+    def print_member(self):
+        print(list(map(getid, list(self.member))))
+    def print_tmember(self):
+        for s_c in self.supportive_clusters:
+            print(list(map(getid, list(s_c.member))))
+
+    def add_supportive(self, cluster):
+        self.supportive_clusters.add(cluster)
+    
+    def need(self, cluster, alpha = 0.1, epsilon = 0.1):
+        local_loss = dict()
+        received_loss = dict()
+        for m in self.member:
+            m.latest_params = self.model
+            val_samples, val_acc, val_loss = m.validate(list_form = True)
+            for i in range(len (val_loss)):
+                val_loss[i] += epsilon
+            local_loss.update({m: val_loss})
+            m.latest_params = cluster.model
+            val_samples, val_acc, val_loss = m.validate(list_form = True)
+            received_loss.update({m: val_loss})
+        for m in self.member:
+            l1 = local_loss[m]
+            l2 = received_loss[m]
+            pval = stats.wilcoxon(l1, l2, alternative = 'greater').pvalue
+            print('pvalue', pval)
+            if pval > alpha:
+                return False
+        return True
+        
+
+    def train(self):
+        Train_weights = []
+        Train_acc = []
+        updates = []
+        for client in self.member:
+            client.latest_params = self.model
+            num_samples, train_acc, train_loss, soln, update = client.train()
+            updates.append([(w0+up) for up, w0 in zip(update, client.latest_params)])
+            Train_weights.append(num_samples)
+            Train_acc.append(train_acc)
+        for s_c in self.supportive_clusters:
+            for client in s_c.member:
+                client.latest_params = self.model
+                num_samples, train_acc, train_loss, soln, update = client.train()
+                updates.append([(w0+up) for up, w0 in zip(update, client.latest_params)])
+                Train_weights.append(num_samples)
+                Train_acc.append(train_acc)
+        Train_weights = np.array(Train_weights, dtype=float) / np.sum(Train_weights, dtype=np.float)
+        num_clients = len(updates)
+        num_layers = len(updates[0])
+        agg_updates = []
+        for l in range(num_layers):
+            agg_updates.append(np.sum([up[l]*w for up, w in zip(updates, Train_weights)], axis=0))
+        self.model = agg_updates
+        print("Training acc ", np.average(Train_acc, weights = Train_weights))
+        
+    def test(self):
+        Test_weights = []
+        Test_acc = []
+        for client in self.member:
+            client.latest_params = self.model
+            test_samples,test_acc, test_loss = client.test()
+            Test_weights.append(test_samples)
+            Test_acc.append(test_acc)
+        print("Testing acc ", np.average(Test_acc, weights = Test_weights))
+        return Test_acc, Test_weights, np.average(Test_acc, weights = Test_weights)
+
 class FAACL(object):
-    def __init__(self, train_config, local_training,epsilon_wx):
+    def __init__(self, train_config, local_training,epsilon_wx, samplesize, repeat):
+        self.repeat = repeat
         self.epsilon_wx = epsilon_wx
+        self.samplesize = samplesize
         for key, val in train_config.trainer_config.items():
             setattr(self, key, val)
         self.local_training = local_training
         self.trainer_type = train_config.trainer_type
         self.group = train_config.group
+        self.swap_label = train_config.swap_label
         # Get the config of client
         self.client_config = train_config.client_config
         self.results_path = train_config.results_path
@@ -56,14 +208,9 @@ class FAACL(object):
         self.construct_actors()
 
         # Create results writer
-        self.writer = ResultWriter(train_config, epsilon = self.epsilon_wx)
-
-        # Store the initial model params
-        self.init_params = self.server.get_params()
+        self.writer = ResultWriter(train_config, epsilon = self.epsilon_wx, samplesize=self.samplesize, repeat = self.repeat)
         
         self.client_info = {}
-        self.group_agginfo = {}
-        self.agg_round = 5
         
     def initial_group_models(self):
         selected_client = random.sample(self.sample_clients, 1)[0]
@@ -76,7 +223,7 @@ class FAACL(object):
     def initial_client_models(self):
         for c in self.sample_clients:
             if c not in self.client_info:
-                model_path = self.results_path + "client_"+ str(c.id) +"_local_" + str(self.local_training) + "_seed_" + str(self.seed) +  ".keras"
+                model_path = self.results_path +"/model/lr_" + str(self.client_config['learning_rate']) + "client_"+ str(c.id) +"_local_" + str(self.local_training) + "_seed_" + str(self.seed) +  ".keras"
                 if os.path.exists(model_path):
                     print("loading model " + str(c.id))
                     c.model = keras.models.load_model(model_path)
@@ -96,8 +243,8 @@ class FAACL(object):
 
     def construct_actors(self):
         # 1, Read dataset
-        clients, train_data, test_data = read_federated_data(self.dataset, group = self.group)
-
+        clients, train_data, test_data = read_federated_data(self.dataset, group = self.group, swap_label = self.swap_label)
+        self.samplesize = min(self.samplesize, len(clients))
         # 2, Get model loader according to dataset and model name and construct the model
         # Set the model loader according to the dataset and model name
         model_path = 'flearn.model.%s.%s' % (self.dataset.split('_')[0], self.model)
@@ -114,30 +261,88 @@ class FAACL(object):
             self.clients += [Client(id, self.client_config, train_data[clients[id]], test_data[clients[id]], \
                         model=client_model, validation = True)]
 
-        # 6, Set the server's downlink to groups
-        self.server.add_downlink(self.groups)
-
-        # 7*, We evaluate the auxiliary global model on server
-        # To speed the testing, we need construct a local test dataset for server
-        if self.eval_global_model == True:
-            server_test_data = {'x':[], 'y':[]}
-            for c in clients:
-                server_test_data['x'].append(test_data[c]['x'])
-                server_test_data['y'].append(test_data[c]['y'])
-            self.server.test_data['x'] = np.vstack(server_test_data['x'])
-            self.server.test_data['y'] = np.hstack(server_test_data['y'])
 
     
 
         
-    def train(self):            
-        self.sample_clients = self.clients
+    def train(self):
+        self.sample_clients = self.clients[:self.samplesize]
+        # Initialization
+
+        # 1. Each client receives data, and trains local model on it
         self.initial_client_models()
+
+        SOP = [] # set of partition
+        # 2. Construct initial partition, with each partition of size 1
+        for client in self.sample_clients:
+            cluster = Cluster(member = {client}, model = client.model.get_weights())
+            partition = Partition(member = {client}, clustering = {cluster}, epsilon = self.epsilon_wx)
+            SOP.append(partition)
+
+
+        # Pre-process
+        iteration = 0
+        while 1:
+            print('Iteration ', iteration, " Partition of length ", len(SOP))
+            iteration += 1
+            for partition in SOP:
+                partition.print_partition()
+            start_time = time.time()
+            # repeat certain iterations
+            for _ in range(self.repeat):
+                for partition in SOP:
+                    # 1. Broadcast all clusters' models in each partition and do model comparison
+                    partition.merge()
+                    # 2. Train the updated clustering
+                    partition.train()
+            ACC = []
+            Weights = []
+            Test_results = dict()
+            for partition in SOP:    
+                acc, weights, test_results = partition.test()
+                ACC.extend(acc)
+                Weights.extend(weights)
+                Test_results.update(test_results)
+            print(ACC)
+            print(Weights)
+            overall_acc = np.average(ACC, weights = Weights)
+            # Append partitions
+            if len(SOP) == 1:
+                break
+            for idx in range(len(SOP) // 2):
+                SOP[idx].append(SOP[len(SOP) - idx - 1])
+            SOP = SOP[:-(len(SOP)-1)// 2]
+            total_time = round(time.time() - start_time, 3)
+            self.writer.write(test_results=Test_results, overall_acc=overall_acc, time = [total_time])
+        
+        print("Preprocessing finished")
+        for partition in SOP:
+            partition.print_partition()  
+        
+        for r in range(self.num_rounds):
+            start_time = time.time()
+            print("Round ", r)
+            SOP[0].train()
+            ACC = []
+            Weights = []
+            Test_results = dict()
+            for partition in SOP:    
+                acc, weights, test_results = partition.test()
+                ACC.extend(acc)
+                Weights.extend(weights)
+                Test_results.update(test_results)
+            overall_acc = np.average(ACC, weights = Weights)
+            total_time = round(time.time() - start_time, 3)
+            self.writer.write(round=r, test_results=Test_results, overall_acc=overall_acc, time = [total_time])
+
+
+        """
         clustering = dict()
         partition = []
         num_round = 10
         t=2
-        num_round = 1
+        if self.model == 'cnn':
+            num_round = 1
         # Initial partition
         for c in self.sample_clients:
             p = tuple([c])
@@ -157,8 +362,8 @@ class FAACL(object):
                         new_p += list(partition[i + k])
                         new_d.update(clustering[partition[i + k]])
                         k += 1
-                    #print("New partition: ", list(map(fun, new_p)))
-                    new_p.sort(key=fun)
+                    #print("New partition: ", list(map(getid, new_p)))
+                    new_p.sort(key=getid)
                     new_p = tuple(new_p)
                     new_partition.append(new_p)
                     new_clustering.update({new_p: new_d})
@@ -171,8 +376,8 @@ class FAACL(object):
                         new_p += list(partition[i + k])
                         new_d.update(clustering[partition[i + k]])
                         k += 1
-                    #print("New partition: ", list(map(fun, new_p)))
-                    new_p.sort(key=fun)
+                    #print("New partition: ", list(map(getid, new_p)))
+                    new_p.sort(key=getid)
                     new_p = tuple(new_p)
                     new_partition.append(new_p)
                     new_clustering.update({new_p: new_d})
@@ -180,14 +385,14 @@ class FAACL(object):
             # Cluster merge
             start_time0 = time.time()
             
-            for _ in range(5):
+            for _ in range(3):
                 start_time = time.time()
                 for p in new_partition:
-                    print("Current partition is ", list(map(fun, list(p))))
+                    print("Current partition is ", list(map(getid, list(p))))
                     c = new_clustering[p]
                     print("With clustering ")
                     for clu in c.keys():
-                        print(list(map(fun, list(clu))))
+                        print(list(map(getid, list(clu))))
                     # first test each cluster model on each client and record their val loss & val acc
                     client_loss = dict()
                     client_acc = dict()
@@ -264,19 +469,17 @@ class FAACL(object):
                                         else:
                                             cor_loss1_epsilon.append(2.3)
                                 # Apply statistical test
-                                # paired t-test: pval = stats.ttest_rel(cor_loss1_epsilon, cor_loss2, alternative = 'greater').pvalue
-                                # wilcoxon signed rank test
                                 pval = stats.wilcoxon(cor_loss1_epsilon, cor_loss2, alternative = 'greater').pvalue
                                 if pval > 0.1:
                                     print("Cluster fail to merge with pvalue ", pval)
-                                    print(list(map(fun, k1)))
-                                    print(list(map(fun, k2)))
+                                    print(list(map(getid, k1)))
+                                    print(list(map(getid, k2)))
                                     flag_merge = False
                                     break
                             if flag_merge:
                                 print("Start merging")
-                                print(list(map(fun, k1)))
-                                print(list(map(fun, k2)))
+                                print(list(map(getid, k1)))
+                                print(list(map(getid, k2)))
                                 if k1 in cluster_to_merge:
                                     new_lst = cluster_to_merge[k1] + [k2]
                                     cluster_to_merge.update({k1: new_lst})
@@ -289,7 +492,7 @@ class FAACL(object):
                         newcluster = list(cluster1)
                         for cluster in cluster_list:
                             newcluster = list(set(newcluster + list(cluster)))
-                        newcluster.sort(key=fun)
+                        newcluster.sort(key=getid)
                         newcluster = tuple(newcluster)
                         if newcluster not in c.keys():
                             cluster_to_add.update({newcluster: c[cluster1]})
@@ -336,8 +539,8 @@ class FAACL(object):
                                 agg_updates.append(np.sum([up[l]*w for up, w in zip(updates, weights)], axis=0))
                             model.set_weights(agg_updates)
                             test_acc_round_t = np.average(test_Acc, weights = test_Weight)
-                            test_results.update({tuple(list(map(fun, list(cluster)))): test_acc_round_t})
-                            print("Round " + str(it) + " cluster " +  str(list(map(fun, list(cluster)))) + " test acc: " + str(test_acc_round_t))
+                            test_results.update({tuple(list(map(getid, list(cluster)))): test_acc_round_t})
+                            print("Round " + str(it) + " cluster " +  str(list(map(getid, list(cluster)))) + " test acc: " + str(test_acc_round_t))
                     weight = []
                     test_acc = []
                     for (t_acc, t_samples, v_acc) in client_acc.values():
@@ -356,7 +559,7 @@ class FAACL(object):
             partition = new_partition
             clustering = new_clustering
             for c in clustering:
-                print(list(map(fun, list(c))))
+                print(list(map(getid, list(c))))
                 
         # Keep training until convergence
         continue_round = 300
@@ -394,8 +597,8 @@ class FAACL(object):
                         agg_updates.append(np.sum([up[l]*w for up, w in zip(updates, weights)], axis=0))
                     model.set_weights(agg_updates)
                     test_acc_round_t = np.average(test_Acc, weights = test_Weight)
-                    test_results.update({tuple(list(map(fun, list(cluster)))): test_acc_round_t})
-                    print("Round " + str(it) + " cluster " +  str(list(map(fun, list(cluster)))) + " test acc: " + str(test_acc_round_t))
+                    test_results.update({tuple(list(map(getid, list(cluster)))): test_acc_round_t})
+                    print("Round " + str(it) + " cluster " +  str(list(map(getid, list(cluster)))) + " test acc: " + str(test_acc_round_t))
             weight = []
             test_acc = []
             for (t_acc, t_samples, v_acc) in client_acc.values():
@@ -407,6 +610,8 @@ class FAACL(object):
             train_time = round(time.time() - start_time, 3)
             print("Training Time at iteration ",it, " is ", train_time)
             self.writer.write(round=it, test_results=test_results, overall_acc=overall_acc, time = [train_time])
+        """
+        
     def select_clients(self, comm_round=1, num_clients=20):
         random.seed(comm_round+self.seed)  # make sure for each comparison, we are selecting the same clients each round
         selected_clients = random.sample(self.clients, num_clients)
@@ -461,8 +666,8 @@ class FAACL(object):
         losses = [rest[3] for rest in results]
         weighted_acc = np.average(accs, weights=nks)
         weighted_loss = np.average(losses, weights=nks)
-        print(colored(f'Round {comm_round}, {ty+ty2} ACC: {round(weighted_acc, 4)},\
-            {ty+ty2} Loss: {round(weighted_loss, 4)}', cor, attrs=['reverse']))
+        #print(colored(f'Round {comm_round}, {ty+ty2} ACC: {round(weighted_acc, 4)},\
+        #    {ty+ty2} Loss: {round(weighted_loss, 4)}', cor, attrs=['reverse']))
 
         summary = {'Total': (num_sublink, weighted_acc, weighted_loss)}
         # Clear partial test result on summary
@@ -528,39 +733,52 @@ class FAACL(object):
             diffs[f'G{g.id}'] = (len(gc), g.discrepancy)
         return diffs
 
-def test(dataset, local_training, \
-         model = 'mlp', group = 1, seed = 2077,epsilon_wx = 0.3):
-    config = TrainConfig(dataset, model, 'AdaFCL', group = group, seed = seed)
-    config.results_path = 'results/'+ dataset+ "/FAACL/"
-
-    if group == 1:
-        config.results_path += "iid/"
-    elif group != 1:
-        config.results_path += "group_" + str(group) + "/"
+def test(dataset, local_training, model = 'mlp', swap_label = False, 
+         group = 1, seed = 2077,epsilon_wx = 0.3, samplesize = 1000, repeat=3, numround = None):
+    config = TrainConfig(dataset, model, 'FAACL', group = group, swap_label = swap_label, seed = seed)
+    if numround != None:
+        config.trainer_config['num_rounds'] = numround
+    config.results_path = '../results/'+ dataset+ "/FAACL/"
+    
+    config.results_path += "group_" + str(group) + "/"
     
     config.results_path += "local_training" + str(local_training) + "/"
     config.results_path += "seed" + str(seed) + "/"
     
     
-    trainer = FAACL(config,local_training, epsilon_wx = epsilon_wx)
+    trainer = FAACL(config,local_training, epsilon_wx = epsilon_wx, samplesize = samplesize, repeat = repeat)
     trainer.train()
 
 
 # In[3]:
 # Finish:
 
-# Running FAACL on mnist iid with epsilon 0.3 with seed 2077
-
-dataset = 'mnist'
-epsilon_wx = 0.3
-model = 'mlp'
-local_training = 50
-seed = 2077
-group = 1
-test(dataset=dataset, local_training = local_training, model = model, epsilon_wx = epsilon_wx, group = group, seed = seed)
+# Running
+def main(args):
+    test(dataset=args.dataset, local_training = 50, 
+         model = args.model, epsilon_wx = args.epsilon_wx, 
+         group = args.group, seed = args.seed, samplesize=args.samplesize, repeat = args.repeat, numround = args.numround)
 
 
 
+
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset')
+    parser.add_argument('--epsilon_wx', type=float)
+    parser.add_argument('--seed', type=int)
+    parser.add_argument('--group', type=int)
+    parser.add_argument('--model', default='mlp')
+    parser.add_argument('--samplesize', type=int, default=1000)
+    parser.add_argument('--repeat', type=int, default=3)
+    parser.add_argument('--numround', type=int, default=None)
+    args = parser.parse_args()
+    print(args)
+    main(args)
 
 
 

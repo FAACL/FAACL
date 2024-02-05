@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 
 class ResultWriter(object):
-    def __init__(self, train_config, epsilon = None):
-        filename = self.make_filename(train_config, epsilon)
+    def __init__(self, train_config, epsilon = None, samplesize=None, repeat = None):
+        filename = self.make_filename(train_config, epsilon, samplesize, repeat)
         dir = train_config.results_path
         self.filepath = os.path.join(dir, filename)
         if not os.path.exists(dir):
@@ -36,8 +36,8 @@ class ResultWriter(object):
             for gid in range(self.num_group):
                 header += [f'G{gid}TestAcc', f'G{gid}TrainAcc', f'G{gid}TrainLoss', f'G{gid}Diff', f'G{gid}NumClinet']
             header += ['Train time','Test time','Total time' ]
-        if self.trainer_type in ['FAACL', 'Centralize', 'FedDrift']:
-            header = ['Iteration', 'group members', 'TestAcc']
+        if self.trainer_type in ['FAACL', 'Centralize', 'FedDrift', 'fedsoft']:
+            header = ['Iteration', 'group_id', 'group members', 'group supportive clusters', 'TestAcc']
         return header
 
     def make_index(self):
@@ -51,7 +51,7 @@ class ResultWriter(object):
         return eval_rounds
 
 
-    def make_filename(self, config, epsilon):
+    def make_filename(self, config, epsilon, samplesize, repeat):
         filename = ''
         trainer_type = config.trainer_type
         dataset = config.trainer_config['dataset']
@@ -83,6 +83,10 @@ class ResultWriter(object):
             if RCC == True: filename += '-RCC'
         if epsilon != None:
             filename += ("_epsilon_" + str(epsilon))
+        if samplesize != None:
+            filename += ("_size_" + str(samplesize))
+        if repeat != None:
+            filename += ("_repeat_" + str(repeat))
         filename += '.xlsx'
         return filename
 
@@ -91,7 +95,7 @@ class ResultWriter(object):
         
         if self.trainer_type in ['fedavg', 'Centralize', 'FedDrift']:
             test_acc = 'TestAcc'
-        if self.trainer_type in ['fedgroup', 'ifca', 'fesem', 'FAACL']:
+        if self.trainer_type in ['fedgroup', 'ifca', 'fesem', 'FAACL', 'fedsoft']:
             test_acc = 'WeightedTestAcc'
 
         self.df.loc[round] = result + time
@@ -133,30 +137,37 @@ class ResultWriter(object):
         self.write_row(round, row, time=time)
         return
     
-    def write(self, round = None, test_results=None, overall_acc=None, time = None):
+    def write(self, round = None, test_results=None, overall_acc=None, time = None, drift = False):
+        
         if test_results:
-            for g in test_results.keys():
-                row = [round, g, test_results[g]]
+            if drift:
+                for g in test_results.keys():
+                    row = [round, g, test_results[g], "", ""]
+                    self.df.loc[self.count] = row
+                    self.count += 1
+            else:
+                for g in test_results.keys():
+                    row = [round, g.id, g.get_member(), g.get_sc(), test_results[g]]
+                    self.df.loc[self.count] = row
+                    self.count += 1
+                row = [round, "Number of clusters", len(test_results), "", ""]
                 self.df.loc[self.count] = row
                 self.count += 1
-            row = [round, "Number of clusters", len(test_results)]
-            self.df.loc[self.count] = row
-            self.count += 1
         if overall_acc:
-            row = [round, "all client", overall_acc]
+            row = [round, "all client", overall_acc, "", ""]
             self.df.loc[self.count] = row
             self.count += 1
         if time:
             if len(time) == 1:
-                row = ["Complexity"] + ["Total Training time"] + time
+                row = ["Complexity"] + ["Total Training time"] + time + ["", ""]
             else:
-                row = ["Complexity"] +["Train time"] + [time[0]] 
+                row = ["Complexity"] +["Train time"] + [time[0]] + ["", ""]
                 self.df.loc[self.count] = row
                 self.count += 1
-                row = ["Complexity"] +["Merge time"] + [time[1]] 
+                row = ["Complexity"] +["Merge time"] + [time[1]] + ["", ""]
                 self.df.loc[self.count] = row
                 self.count += 1
-                row = ["Complexity"] +["Total time"] + [time[2]]
+                row = ["Complexity"] +["Total time"] + [time[2]]+ ["", ""]
             self.df.loc[self.count] = row
             self.count += 1
         self.df.to_excel(self.filepath)

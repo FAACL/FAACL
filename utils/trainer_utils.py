@@ -5,10 +5,11 @@ import numpy as np
     The type of trainer contain:  ['fedgroup', 'fesem', 'ifca', 'FAACL', 'FedDrift', 'Centralize']
 '''
 class TrainConfig(object):
-    def __init__(self, dataset, model, trainer, group = 1, seed = 2077):
+    def __init__(self, dataset, model, trainer, group = 1, swap_label = 0, seed = 2077):
         self.trainer_type = trainer
         self.results_path = f'results/{dataset}/'
         self.group = group
+        self.swap_label = swap_label
         self.trainer_config = {
             'dataset': dataset,
             'model': model,
@@ -19,8 +20,7 @@ class TrainConfig(object):
             'eval_locally': False,
             'dynamic': False, 
             'swap_p': 0, 
-            'shift_type': None,
-            'group': group
+            'shift_type': None 
         }
 
         self.client_config = {
@@ -30,7 +30,7 @@ class TrainConfig(object):
             'temperature': None
         }
 
-        if trainer in ['fedgroup', 'fesem', 'ifca', 'FAACL', 'FedDrift', 'Centralize']:
+        if trainer in ['fedgroup', 'fesem', 'ifca', 'FAACL', 'FedDrift', 'Centralize', 'fedsoft']:
             if trainer == 'fedgroup':
                 self.trainer_config.update({
                     'num_group': 3,
@@ -47,19 +47,24 @@ class TrainConfig(object):
                     'recluster_epoch': None
                 })
                 
-            if trainer in ['fesem',  'ifca']:
+            if trainer in ['fesem',  'ifca', 'fedsoft']:
                 self.trainer_config.update({
                     'num_group': 3,
                     'group_agg_lr': 0.0,
                     'eval_global_model': True
                 })
-
+                
             self.group_config = {
                 'consensus': False,
                 'max_clients': 999,
                 'allow_empty': True
             }
         
+        if self.trainer_config['dataset'] == 'sent140':
+            self.client_config.update({'learning_rate': 0.01})
+            self.trainer_config.update({'num_group': 5})
+            self.trainer_config.update({'num_rounds': 800})
+            
         if self.trainer_config['dataset'] == 'emnist':
             self.client_config.update({'learning_rate': 0.003})
             self.trainer_config.update({'num_group': 5})

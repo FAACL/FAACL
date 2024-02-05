@@ -8,8 +8,21 @@ import re
 from skimage.util import random_noise
 from skimage.transform import rotate
 
-def read_json(train_data_dir, test_data_dir, group = 1, central = False,
-        var = 0, salt = 0):    
+def read_json(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False,
+        var = 0, salt = 0):
+    '''parses data in given train and test data directories
+
+    assumes:
+    - the data in the input directories are .json files with 
+        keys 'users' and 'user_data'
+    - the set of train set users is the same as the set of test set users
+    
+    Return:
+        clients: list of client ids
+        train_data: dictionary of train (numpy) data
+        test_data: dictionary of test (numpy) data
+    '''
+    
     clients = []
     train_npdata = {}
     test_npdata = {}
@@ -640,22 +653,66 @@ def read_json(train_data_dir, test_data_dir, group = 1, central = False,
 
     return clients, train_npdata, test_npdata
 
+def text2embs(dataset_list, emb_file, max_words=20):
+
+    with open(emb_file, 'r') as inf:
+        embs = json.load(inf)
+    id2word = embs['vocab']
+    word2id = {v: k for k,v in enumerate(id2word)}
+    word_emb = np.array(embs['emba'])
+
+    def _line_to_embs(line, w2d, d2e, max_words):
+        word_list = re.findall(r"[\w']+|[.,!?;]", line)
+        pad = int(max_words - len(word_list))
+        pad_index = len(w2d)
+        if pad <= 0:
+            # Clip to max length
+            word_list = word_list[:max_words]
+        embs = []
+        for word in word_list:
+            if word in w2d:
+                embs.append(d2e[w2d[word]])
+            else:
+                embs.append(d2e[pad_index])
+        if pad > 0:
+            # Add padding to the front of emb
+            embs = [d2e[pad_index]]*pad + embs
+        return embs
+
+    new_dataset_list = []
+    for dataset in dataset_list:
+        for c, data in dataset.items():
+            embs_list, labels_list = [], []
+            for post, label in zip(data['x'], data['y']):
+                embs = _line_to_embs(post[4], word2id, word_emb, max_words)
+                embs_list.append(embs)
+                labels_list += [1 if label=='4' else 0]
+            dataset[c]['x'] = embs_list
+            dataset[c]['y'] = labels_list
+        new_dataset_list.append(dataset)
+    return new_dataset_list
+
+def read_mnist(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central,var = 0.4, salt = 0.7)
 
 
-def read_mnist(train_data_dir, test_data_dir, group = 1, central = False):
-    return read_json(train_data_dir, test_data_dir, group=group, central = central,var = 0.4, salt = 0.7)
+def read_femnist(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central,var = 1, salt = 0.6)
+
+def read_femnist62(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central)
+
+def read_shakespeare(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central)
 
 
-def read_femnist(train_data_dir, test_data_dir, group = 1, central = False):
-    return read_json(train_data_dir, test_data_dir, group=group, central = central,var = 1, salt = 0.6)
+def read_sent140(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central)
 
-def read_femnist62(train_data_dir, test_data_dir, group = 1,central = False):
-    return read_json(train_data_dir, test_data_dir, group=group, central = central)
+def read_fmnist(train_data_dir, test_data_dir, group = 1, swap_label = 0, central = False):
+    return read_json(train_data_dir, test_data_dir, group=group, swap_label = swap_label, central = central,var = 0.9, salt = 0.7)
 
-def read_fmnist(train_data_dir, test_data_dir, group = 1,  central = False):
-    return read_json(train_data_dir, test_data_dir, group=group, central = central,var = 0.9, salt = 0.7)
-
-def read_federated_data(dsname, group = 1,  central = False):
+def read_federated_data(dsname, group = 1, swap_label = 0, central = False):
     clients = []
     train_data = {}
     test_data = {}
@@ -665,15 +722,24 @@ def read_federated_data(dsname, group = 1,  central = False):
     test_data_dir = Path.joinpath(wspath, 'data', dsname, 'data', 'test').absolute()
 
     if dsname.startswith('mnist'):
-        clients, train_data, test_data = read_mnist(train_data_dir, test_data_dir, group =group,  central = central)
+        clients, train_data, test_data = read_mnist(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
     if dsname == 'emnist':
-        clients, train_data, test_data = read_femnist(train_data_dir, test_data_dir, group =group, central = central)
+        clients, train_data, test_data = read_femnist(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
     if dsname == 'femnist62':
-        clients, train_data, test_data = read_femnist62(train_data_dir, test_data_dir, group =group, central = central)
+        clients, train_data, test_data = read_femnist62(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
     if dsname == 'fmnist':
-        clients, train_data, test_data = read_fmnist(train_data_dir, test_data_dir, group =group, central = central)
-  
+        clients, train_data, test_data = read_fmnist(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
+    if dsname == 'shakespeare':
+        clients, train_data, test_data = read_shakespeare(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
+    
+    if dsname == 'sent140':
+        max_words = 25
+        emb_file = Path.joinpath(wspath, 'data', dsname, 'embs.json').absolute()
+        clients, train_data, test_data = read_sent140(train_data_dir, test_data_dir, group =group, swap_label = swap_label, central = central)
+        embs = text2embs([train_data, test_data], emb_file, max_words)
+        train_data, test_data = embs[0], embs[1]
     # Convert list to numpy array
+    
     for c in train_data.keys():
         train_data[c]['x'] = np.array(train_data[c]['x'], dtype=np.float32)
         train_data[c]['y'] = np.array(train_data[c]['y'], dtype=np.uint8)
@@ -696,6 +762,7 @@ def read_federated_data(dsname, group = 1,  central = False):
         print("Asymmetric Synthetic input partition")
     if group == 8:
         print("Asymmetric Synthetic data size partition")
+    
     print(f'Dataset: {dsname}')
     print(f'The dataset size: {train_size + test_size}, train size: {train_size}, test size: {test_size}.')
     print(f'Number of client: {len(train_data)}.')

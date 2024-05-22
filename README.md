@@ -11,6 +11,8 @@ FAACL can simulate the following CFL frameworks:
 
 **FeSEM** -> [Multi-center federated learning](https://arxiv.org/abs/2005.01026)
 
+**FedSoft** -> [FedSoft: Soft Clustered Federated Learning with Proximal Local Updating](https://arxiv.org/abs/2112.06053)
+
 **FedDrift** -> [Federated Learning under Distributed Concept Drift](https://proceedings.mlr.press/v206/jothimurugesan23a.html)
 
 Requried packages is in requirements.txt, to install them, run 
